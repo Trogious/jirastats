@@ -1,0 +1,168 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<script src='https://canvasjs.com/assets/script/jquery-1.11.1.min.js'></script>
+		<script src='https://canvasjs.com/assets/script/canvasjs.min.js'></script>
+		<script>
+			window.onload = function () {
+				function renderChart(index, title, estimateType, totalScope, burnedScope, averageVelocity, dataPointsTotal, dataPointsBurned, dataPointsRemaining) {
+					appendDiv(index)
+					$('#header' + index).html(title)
+					if (estimateType === 'time') {
+						yPostfix = 'md'
+						xTitle = 'Man Days'
+					} else {
+						yPostfix = 'sp'
+						xTitle = 'Story Points'
+					}
+					var chart = new CanvasJS.Chart('numbersGraph' + index, {
+						animationEnabled: true,
+						theme: 'light2', // 'light1', 'light2', 'dark1', 'dark2'
+						title:{
+							text: 'Current Values',
+							fontSize: 20
+						},
+						axisY: {
+							title: xTitle
+						},
+						data: [{
+							type: 'column',
+							yValueFormatString: '# ' + yPostfix,
+							dataPoints: [
+							{ y: totalScope, label: 'Total Scope' },
+							{ y: burnedScope, label: 'Burned Scope' },
+							{ y: averageVelocity, label: 'Average Sprint Velocity' }
+							]
+						}]
+					})
+					chart.render()
+					chart = new CanvasJS.Chart('scopeGraph' + index, {
+						theme: 'light2', // 'light1', 'light2', 'dark1', 'dark2'
+						animationEnabled: true,
+						title:{
+							text: 'Scope To Date',
+							fontSize: 20
+						},
+						axisX: {
+							title: 'Date',
+							valueFormatString: 'YYYY-MM-DD',
+							intervalType: 'day',
+							interval: 7
+						},
+						axisY:{
+							title: xTitle,
+						},
+						data: [{
+							showInLegend: true,
+							legendText: 'Total Scope',
+							type: 'line',
+							markerSize: 12,
+							xValueFormatString: 'YYYY-MMM-DD',
+							yValueFormatString: '# ' + yPostfix,
+							dataPoints: dataPointsTotal
+						},
+						/*
+						{
+							showInLegend: true,
+							legendText: 'Burned Scope',
+							type: 'line',
+							markerSize: 12,
+							xValueFormatString: 'YYYY-MMM-DD',
+							yValueFormatString: '# ' + yPostfix,
+							dataPoints: dataPointsBurned
+						},
+						*/
+						{
+							showInLegend: true,
+							legendText: 'Remaining Scope',
+							type: 'line',
+							markerSize: 12,
+							xValueFormatString: 'YYYY-MMM-DD',
+							yValueFormatString: '# ' + yPostfix,
+							dataPoints: dataPointsRemaining
+						}]
+					})
+					$('#numbersGraph'+index).show()
+					$('#scopeGraph'+index).show()
+					chart.render();
+				}
+				function renderCharts(data) {
+					if ('projects' in data) {
+						for (var i = 0; i < data['projects'].length; ++i) {
+							project = data['projects'][i]
+							project_key = project['project_key']
+							dataPointsTotal = []
+							dataPointsBurned = []
+							dataPointsRemaining = []
+							for (var j = 0; j < project['to_date']['dates'].length; ++j) {
+								dataPoint = project['to_date']
+								var marker = getMarkerTotal(dataPoint['burned_estimates'], j)
+								dataPointsTotal.push({
+									x: new Date(dataPoint['dates'][j]),
+									y: dataPoint['total_estimates'][j],
+									indexLabel: marker[0],
+									markerType: marker[1],
+									markerColor: marker[2]
+								})
+								/*
+								dataPointsBurned.push({
+									x: new Date(dataPoint['dates'][j]),
+									y: dataPoint['burned_estimates'][j],
+									indexLabel: marker[0],
+									markerType: marker[1],
+									markerColor: marker[2]
+								})
+								*/
+								marker = getMarkerRemaining(dataPoint['remaining_estimates'], j, project['average_velocity'] / 2)
+								dataPointsRemaining.push({
+									x: new Date(dataPoint['dates'][j]),
+									y: dataPoint['remaining_estimates'][j],
+									indexLabel: marker[0],
+									markerType: marker[1],
+									markerColor: marker[2]
+								})
+							}
+							var averageVelocity = project['average_velocity'] === undefined ? -1 : project['average_velocity']
+							renderChart(i, project['title'], project['estimate_type'], project['total_scope_estimate'], project['burned_scope_estimate'], averageVelocity, dataPointsTotal, dataPointsBurned, dataPointsRemaining)
+						}
+					}
+				}
+				$.getJSON('data.json', renderCharts)
+			}
+
+			function getMarkerTotal(dataPoint, i) {
+				if (i > 0) {
+					var diff = dataPoint[i] - dataPoint[i-1]
+					if (diff > 0) {
+						return ['increase', 'cross', '#cc0000']
+					} else if (diff < 0) {
+						return ['decrease', 'triangle', '#00cc00']
+					}
+				}
+				return ['', 'circle', '#0000cc']
+			}
+
+			function getMarkerRemaining(dataPoint, i, averageVelocity) {
+				if (i > 0) {
+					var diff = Math.abs(dataPoint[i] - dataPoint[i-1])
+					if (diff > averageVelocity) {
+						return ['speedup', 'triangle', '#00cc00']
+					} else if (diff < averageVelocity) {
+						return ['slowdown', 'cross', '#cc0000']
+					}
+				}
+				return ['', 'circle', '#0000cc']
+			}
+
+			function appendDiv(index) {
+				$('body').append("<div id='project" + index + "' style='margin: 0; margin-top: 20px; border: 1px solid #f00; width: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;'></div>")
+				$('#project' + index).append("<div id='header" + index + "' style='margin: 0; width=99%; font: 28pt bold;'></div>")
+				$('#project' + index).append("<div id='charts" + index + "' style='margin: 0; margin-top: 20px; border: 1px solid #fff; width: 99%; display: flex; flex-direction: row; justify-content: flex-start; align-items: center;'></div>")
+				$('#charts' + index).append("<div id='numbersGraph" + index + "' style='height: 370px; width: 20%;'></div>")
+				$('#charts' + index).append("<div id='scopeGraph" + index + "' style='height: 370px; width: 79%;'></div>")
+			}
+		</script>
+	</head>
+	<body>
+	</body>
+</html>
