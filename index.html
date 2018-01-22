@@ -61,7 +61,6 @@
 							yValueFormatString: '# ' + yPostfix,
 							dataPoints: dataPointsTotal
 						},
-						/*
 						{
 							showInLegend: true,
 							legendText: 'Burned Scope',
@@ -71,7 +70,7 @@
 							yValueFormatString: '# ' + yPostfix,
 							dataPoints: dataPointsBurned
 						},
-						*/
+						/*
 						{
 							showInLegend: true,
 							legendText: 'Remaining Scope',
@@ -80,7 +79,9 @@
 							xValueFormatString: 'YYYY-MMM-DD',
 							yValueFormatString: '# ' + yPostfix,
 							dataPoints: dataPointsRemaining
-						},/*
+						},
+						*/
+						/*
 						{
 							type: "scatter",
 							markerSize: 20,
@@ -112,7 +113,7 @@
 									markerType: marker[1],
 									markerColor: marker[2]
 								})
-								/*
+								marker = getMarkerBurned(dataPoint['burned_estimates'], j, project['average_velocity'] / 2)
 								dataPointsBurned.push({
 									x: new Date(dataPoint['dates'][j]),
 									y: dataPoint['burned_estimates'][j],
@@ -120,7 +121,6 @@
 									markerType: marker[1],
 									markerColor: marker[2]
 								})
-								*/
 								marker = getMarkerRemaining(dataPoint['remaining_estimates'], j, project['average_velocity'] / 2)
 								dataPointsRemaining.push({
 									x: new Date(dataPoint['dates'][j]),
@@ -142,24 +142,36 @@
 				if (i > 0) {
 					var diff = dataPoint[i] - dataPoint[i-1]
 					if (diff > 0) {
-						return ['increase', 'cross', '#cc0000']
+						return [undefined, 'cross', '#cc0000']
 					} else if (diff < 0) {
-						return ['decrease', 'triangle', '#00cc00']
+						return [undefined, 'triangle', '#00cc00']
 					}
 				}
-				return ['', 'circle', '#0000cc']
+				return [undefined, 'circle', '#0000cc']
+			}
+
+			function getMarkerBurned(dataPoint, i, averageVelocity) {
+				if (i > 0) {
+					var diff = dataPoint[i] - dataPoint[i-1]
+					if (diff > averageVelocity) {
+						return [undefined, 'triangle', '#00cc00']
+					} else if (diff < averageVelocity) {
+						return [undefined, 'cross', '#cc0000']
+					}
+				}
+				return [undefined, 'circle', '#0000cc']
 			}
 
 			function getMarkerRemaining(dataPoint, i, averageVelocity) {
 				if (i > 0) {
 					var diff = dataPoint[i-1] - dataPoint[i]
 					if (diff > averageVelocity) {
-						return ['speedup', 'triangle', '#00cc00']
+						return [undefined, 'triangle', '#00cc00']
 					} else if (diff < averageVelocity) {
-						return ['slowdown', 'cross', '#cc0000']
+						return [undefined, 'cross', '#cc0000']
 					}
 				}
-				return ['', 'circle', '#0000cc']
+				return [undefined, 'circle', '#0000cc']
 			}
 
 			function appendDiv(index) {

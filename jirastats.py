@@ -11,7 +11,7 @@ JS_USERNAME = os.getenv('JS_USERNAME')
 JS_PASSWORD = os.getenv('JS_PASSWORD')
 JS_BASE_URL = os.getenv('JS_BASE_URL')
 JS_STORYPOINTS_FIELD = os.getenv('JS_STORYPOINTS_FIELD', 'customfield_10008')
-JS_TIMEESTIMATE_FIELD = 'aggregatetimeoriginalestimate'
+JS_TIMEESTIMATE_FIELD = 'timeoriginalestimate'
 JS_AUTH = (JS_USERNAME, JS_PASSWORD)
 JS_HEADERS = {'Content-Type': 'application/json', 'Accept': 'application/json'}
 JS_MAX_RESULTS = 999
@@ -161,7 +161,12 @@ def parse_config(config):
             title = config['title']
         else:
             title = None
-        return (config['start_date'], config['end_date'], get_estimate_fn, estimate_type, title)
+        if 'milestones' in keys:
+            milestones = config['milestones']
+        else:
+            milestones = None
+        return {'start_date': config['start_date'], 'end_date': config['end_date'], 'get_estimate_fn': get_estimate_fn,
+                'estimate_type': estimate_type, 'title': title, 'milestones': milestones}
     return None
 
 
@@ -200,10 +205,15 @@ def get_days_for_estimates(start_date, end_date):
 
 def get_project_stats(config_key):
     config = get_project_config(config_key)
-    days = get_days_for_estimates(config[0], config[1])
-    get_estimate_fn = config[2]
+    get_estimate_fn = config['get_estimate_fn']
     total_estimates_to_date = []
     project_key = config_key.strip().split('-')[0]
+    jql = 'project=' + project_key
+    total_est = get_estimate_fn(jql)
+    jql = 'project=' + project_key + ' AND resolution != Unresolved'
+    resolved_est = get_estimate_fn(jql)
+    remaining_est = total_est - resolved_est
+    days = get_days_for_estimates(config['start_date'], config['end_date'])
     for day in days:
         jql = 'project=' + project_key + ' AND createdDate <= "' + day + '"'
         total_est_to_date = get_estimate_fn(jql)
@@ -214,24 +224,21 @@ def get_project_stats(config_key):
         resolved_est_to_date = get_estimate_fn(jql)
         resolved_estimates_to_date.append(resolved_est_to_date)
     remaining_estimates_to_date = [total_estimates_to_date[i] - resolved_estimates_to_date[i] for i in range(len(total_estimates_to_date))]
-    jql = 'project=' + project_key
-    total_est = get_estimate_fn(jql)
-    jql = 'project=' + project_key + ' AND resolution != Unresolved'
-    resolved_est = get_estimate_fn(jql)
-    remaining_est = total_est - resolved_est
     project_name = get_project_name_from_key(project_key)
     if project_name is None:
         average_velocity = None
     else:
         average_velocity = get_average_velocity(project_name)
-        if config[3] == 'time':
+        if config['estimate_type'] == 'time':
             average_velocity = int(average_velocity / 3600 / 8)
-    if config[4] is None:
+    if config['title'] is None:
         title = project_key
     else:
-        title = config[4]
-    to_date = {'total_estimates': total_estimates_to_date, 'burned_estimates': resolved_estimates_to_date, 'remaining_estimates': remaining_estimates_to_date, 'dates': days}
-    stats = {'project_key': project_key, 'estimate_type': config[3], 'total_scope_estimate': total_est, 'burned_scope_estimate': resolved_est, 'average_velocity': average_velocity, 'remaining_scope_estimate': remaining_est, 'title': title, 'to_date': to_date}
+        title = config['title']
+    to_date = {'total_estimates': total_estimates_to_date, 'burned_estimates': resolved_estimates_to_date,
+               'remaining_estimates': remaining_estimates_to_date, 'dates': days}
+    stats = {'project_key': project_key, 'estimate_type': config['estimate_type'], 'total_scope_estimate': total_est, 'burned_scope_estimate': resolved_est,
+             'average_velocity': average_velocity, 'remaining_scope_estimate': remaining_est, 'title': title, 'to_date': to_date, 'milestones': config['milestones']}
     return stats
 
 
@@ -257,6 +264,7 @@ def main():
     for config_key in keys:
         stats = get_project_stats(config_key)
         stats_obj['projects'].append(stats)
+    stats_obj['projects'].sort(key=lambda p: p['to_date']['dates'][0])
     stats_json = json.dumps(stats_obj)
     print(stats_json)
 
