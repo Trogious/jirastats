@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# import urllib
+import urllib
 import requests
 import json
 import os
@@ -140,7 +140,7 @@ def get_average_velocity(project_name):
                     else:
                         log(resp.status_code)
                 average_velocity = int(sum(story_points) / max(1, len(story_points)))
-                return average_velocity
+                return (average_velocity, rapid_view_id)
             else:
                 log(resp.status_code)
     else:
@@ -165,8 +165,12 @@ def parse_config(config):
             milestones = config['milestones']
         else:
             milestones = None
+        if estimate_type == 'story_points':
+            url_postfix = ' AND issueFunction IN aggregateExpression(Total, "storyPoints.sum()")'
+        else:
+            url_postfix = ' AND issueFunction IN aggregateExpression(Total, "originalEstimate.sum()")'
         return {'start_date': config['start_date'], 'end_date': config['end_date'], 'get_estimate_fn': get_estimate_fn,
-                'estimate_type': estimate_type, 'title': title, 'milestones': milestones}
+                'estimate_type': estimate_type, 'title': title, 'url_postfix': url_postfix, 'milestones': milestones}
     return None
 
 
@@ -203,42 +207,61 @@ def get_days_for_estimates(start_date, end_date):
     return days
 
 
+def get_jira_url_issues(jql, postfix):
+    return JS_BASE_URL + '/issues/?jql=' + urllib.parse.quote(jql + postfix)
+
+
+def get_jira_url_velocity(rapid_view_id):
+    return JS_BASE_URL + '/secure/RapidBoard.jspa?view=reporting&chart=velocityChart&rapidView=' + str(rapid_view_id)
+
+
 def get_project_stats(config_key):
     config = get_project_config(config_key)
     get_estimate_fn = config['get_estimate_fn']
-    total_estimates_to_date = []
     project_key = config_key.strip().split('-')[0]
     jql = 'project=' + project_key
     total_est = get_estimate_fn(jql)
+    total_est_url = get_jira_url_issues(jql, config['url_postfix'])
     jql = 'project=' + project_key + ' AND resolution != Unresolved'
     resolved_est = get_estimate_fn(jql)
     remaining_est = total_est - resolved_est
+    remaining_est_url = get_jira_url_issues(jql, config['url_postfix'])
     days = get_days_for_estimates(config['start_date'], config['end_date'])
+    total_estimates_to_date = []
+    urls_to_date = {}
+    urls_to_date['total'] = []
     for day in days:
         jql = 'project=' + project_key + ' AND createdDate <= "' + day + '"'
         total_est_to_date = get_estimate_fn(jql)
+        urls_to_date['total'].append(get_jira_url_issues(jql, config['url_postfix']))
         total_estimates_to_date.append(total_est_to_date)
     resolved_estimates_to_date = []
+    urls_to_date['burned'] = []
     for day in days:
         jql = 'project=' + project_key + ' AND resolution != Unresolved AND resolutiondate <= "' + day + '"'
         resolved_est_to_date = get_estimate_fn(jql)
+        urls_to_date['burned'].append(get_jira_url_issues(jql, config['url_postfix']))
         resolved_estimates_to_date.append(resolved_est_to_date)
     remaining_estimates_to_date = [total_estimates_to_date[i] - resolved_estimates_to_date[i] for i in range(len(total_estimates_to_date))]
     project_name = get_project_name_from_key(project_key)
+    velocity_url = None
     if project_name is None:
         average_velocity = None
     else:
-        average_velocity = get_average_velocity(project_name)
+        average_velocity, rapid_view_id = get_average_velocity(project_name)
         if config['estimate_type'] == 'time':
             average_velocity = int(average_velocity / 3600 / 8)
+        if rapid_view_id is not None:
+            velocity_url = get_jira_url_velocity(rapid_view_id)
     if config['title'] is None:
         title = project_key
     else:
         title = config['title']
     to_date = {'total_estimates': total_estimates_to_date, 'burned_estimates': resolved_estimates_to_date,
-               'remaining_estimates': remaining_estimates_to_date, 'dates': days}
+               'remaining_estimates': remaining_estimates_to_date, 'dates': days, 'urls': urls_to_date}
     stats = {'project_key': project_key, 'estimate_type': config['estimate_type'], 'total_scope_estimate': total_est, 'burned_scope_estimate': resolved_est,
-             'average_velocity': average_velocity, 'remaining_scope_estimate': remaining_est, 'title': title, 'to_date': to_date, 'milestones': config['milestones']}
+             'total_scope_url': total_est_url, 'burned_scope_url': remaining_est_url, 'average_velocity': average_velocity, 'velocity_url': velocity_url,
+             'remaining_scope_estimate': remaining_est, 'title': title, 'to_date': to_date, 'milestones': config['milestones']}
     return stats
 
 

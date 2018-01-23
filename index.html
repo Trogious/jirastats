@@ -5,7 +5,7 @@
 		<script src='https://canvasjs.com/assets/script/canvasjs.min.js'></script>
 		<script>
 			window.onload = function () {
-				function renderChart(index, title, estimateType, totalScope, burnedScope, averageVelocity, dataPointsTotal, dataPointsBurned, dataPointsRemaining) {
+				function renderChart(index, title, estimateType, totalScope, burnedScope, averageVelocity, dataPointsTotal, dataPointsBurned, dataPointsRemaining, totalScopeUrl, burnedScopeUrl, velocityUrl) {
 					appendDiv(index)
 					$('#header' + index).html(title)
 					if (estimateType === 'time') {
@@ -29,9 +29,9 @@
 							type: 'column',
 							yValueFormatString: '# ' + yPostfix,
 							dataPoints: [
-							{ y: totalScope, label: 'Total Scope' },
-							{ y: burnedScope, label: 'Burned Scope' },
-							{ y: averageVelocity, label: 'Average Sprint Velocity' }
+							{ y: totalScope, label: 'Total Scope', click: function() { location.href = totalScopeUrl } },
+							{ y: burnedScope, label: 'Burned Scope', click: function() { location.href = burnedScopeUrl } },
+							{ y: averageVelocity, label: 'Average Sprint Velocity', click: function() { location.href = velocityUrl } }
 							]
 						}]
 					})
@@ -91,24 +91,27 @@
 						}*/
 						]
 					})
-					$('#numbersGraph'+index).show()
-					$('#scopeGraph'+index).show()
 					chart.render();
+				}
+				function dataPointClick(urls, i) {
+					return function () {
+						location.href = urls[i]
+					}
 				}
 				function renderCharts(data) {
 					if ('projects' in data) {
 						for (var i = 0; i < data['projects'].length; ++i) {
 							project = data['projects'][i]
-							project_key = project['project_key']
 							dataPointsTotal = []
 							dataPointsBurned = []
 							dataPointsRemaining = []
 							for (var j = 0; j < project['to_date']['dates'].length; ++j) {
-								dataPoint = project['to_date']
+								var dataPoint = project['to_date']
 								var marker = getMarkerTotal(dataPoint['total_estimates'], j)
 								dataPointsTotal.push({
 									x: new Date(dataPoint['dates'][j]),
 									y: dataPoint['total_estimates'][j],
+									click: dataPointClick(dataPoint['urls']['total'], j),
 									indexLabel: marker[0],
 									markerType: marker[1],
 									markerColor: marker[2]
@@ -117,6 +120,7 @@
 								dataPointsBurned.push({
 									x: new Date(dataPoint['dates'][j]),
 									y: dataPoint['burned_estimates'][j],
+									click: dataPointClick(dataPoint['urls']['burned'], j),
 									indexLabel: marker[0],
 									markerType: marker[1],
 									markerColor: marker[2]
@@ -131,13 +135,13 @@
 								})
 							}
 							var averageVelocity = project['average_velocity'] === undefined ? 0 : project['average_velocity']
-							renderChart(i, project['title'], project['estimate_type'], project['total_scope_estimate'], project['burned_scope_estimate'], averageVelocity, dataPointsTotal, dataPointsBurned, dataPointsRemaining)
+							renderChart(i, project['title'], project['estimate_type'], project['total_scope_estimate'], project['burned_scope_estimate'],
+								averageVelocity, dataPointsTotal, dataPointsBurned, dataPointsRemaining, project['total_scope_url'], project['burned_scope_url'], project['velocity_url'])
 						}
 					}
 				}
 				$.getJSON('data.json', renderCharts)
 			}
-
 			function getMarkerTotal(dataPoint, i) {
 				if (i > 0) {
 					var diff = dataPoint[i] - dataPoint[i-1]
