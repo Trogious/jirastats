@@ -11,6 +11,7 @@ JS_USERNAME = os.getenv('JS_USERNAME')
 JS_PASSWORD = os.getenv('JS_PASSWORD')
 JS_BASE_URL = os.getenv('JS_BASE_URL')
 JS_STORYPOINTS_FIELD = os.getenv('JS_STORYPOINTS_FIELD', 'customfield_10008')
+JS_OUTPUT_JSON_FILE = os.getenv('JS_OUTPUT_JSON_FILE')
 JS_TIMEESTIMATE_FIELD = 'timeoriginalestimate'
 JS_AUTH = (JS_USERNAME, JS_PASSWORD)
 JS_HEADERS = {'Content-Type': 'application/json', 'Accept': 'application/json'}
@@ -289,7 +290,12 @@ def main():
         stats_obj['projects'].append(stats)
     stats_obj['projects'].sort(key=lambda p: p['to_date']['dates'][0])
     stats_json = json.dumps(stats_obj)
-    print(stats_json)
+    try:
+        with open(JS_OUTPUT_JSON_FILE, 'w') as f:
+            f.write(stats_json)
+    except OSError as e:
+        log(e)
+        sys.exit(e.errno)
 
 
 if __name__ == '__main__':
