@@ -27,7 +27,7 @@
 						},
 						data: [{
 							type: 'column',
-							yValueFormatString: '# ' + yPostfix,
+							yValueFormatString: '0 ' + yPostfix,
 							dataPoints: [
 							{ y: totalScope, label: 'Total Scope', click: function() { location.href = totalScopeUrl } },
 							{ y: burnedScope, label: 'Burned Scope', click: function() { location.href = burnedScopeUrl } },
@@ -58,7 +58,7 @@
 							type: 'line',
 							markerSize: 12,
 							xValueFormatString: 'YYYY-MMM-DD',
-							yValueFormatString: '# ' + yPostfix,
+							yValueFormatString: '0 ' + yPostfix,
 							dataPoints: dataPointsTotal
 						},
 						{
@@ -67,7 +67,7 @@
 							type: 'line',
 							markerSize: 12,
 							xValueFormatString: 'YYYY-MMM-DD',
-							yValueFormatString: '# ' + yPostfix,
+							yValueFormatString: '0 ' + yPostfix,
 							dataPoints: dataPointsBurned
 						},
 						/*
@@ -77,7 +77,7 @@
 							type: 'line',
 							markerSize: 12,
 							xValueFormatString: 'YYYY-MMM-DD',
-							yValueFormatString: '# ' + yPostfix,
+							yValueFormatString: '0 ' + yPostfix,
 							dataPoints: dataPointsRemaining
 						},
 						*/
