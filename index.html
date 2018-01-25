@@ -5,7 +5,7 @@
 		<script src='https://canvasjs.com/assets/script/canvasjs.min.js'></script>
 		<script>
 			window.onload = function () {
-				function renderChart(index, title, estimateType, totalScope, burnedScope, averageVelocity, dataPointsTotal, dataPointsBurned, dataPointsRemaining, totalScopeUrl, burnedScopeUrl, velocityUrl) {
+				function renderChart(index, title, estimateType, totalScope, burnedScope, averageVelocity, dataPointsTotal, dataPointsBurned, dataPointsRemaining, totalScopeUrl, burnedScopeUrl, velocityUrl, milestonePoints) {
 					appendDiv(index)
 					$('#header' + index).html(title)
 					if (estimateType === 'time') {
@@ -47,7 +47,8 @@
 							title: 'Date',
 							valueFormatString: 'YYYY-MM-DD',
 							intervalType: 'day',
-							interval: 7
+							interval: 7,
+							stripLines: milestonePoints
 						},
 						axisY:{
 							title: xTitle,
@@ -81,14 +82,10 @@
 							dataPoints: dataPointsRemaining
 						},
 						*/
-						/*
 						{
 							type: "scatter",
-							markerSize: 20,
-							dataPoints: [
-								{ x: new Date(2018,0,15), y: 1 },
-							]
-						}*/
+							dataPoints: milestonePoints
+						}
 						]
 					})
 					chart.render();
@@ -134,9 +131,29 @@
 									markerColor: marker[2]
 								})
 							}
+							milestonePoints = []
+							if (project['milestones'] !== null) {
+								for (var j = 0; j < project['milestones'].length; ++j) {
+									Object.keys(project['milestones'][j]).forEach(function(name) {
+										milestonePoints.push({
+											x: new Date(project['milestones'][j][name]),
+											y: 1,
+											markerSize: 10,
+											toolTipContent: "<span style='\"'color: {color};'\"'>{label}:</span> " + project['milestones'][j][name],
+											value: new Date(project['milestones'][j][name]),
+											showOnTop: true,
+											thickness: 3,
+											color: "orange",
+											labelFontColor: "black",
+											label: name,
+											labelAlign: "near"
+										})
+									})
+								}
+							}
 							var averageVelocity = project['average_velocity'] === undefined ? 0 : project['average_velocity']
 							renderChart(i, project['title'], project['estimate_type'], project['total_scope_estimate'], project['burned_scope_estimate'],
-								averageVelocity, dataPointsTotal, dataPointsBurned, dataPointsRemaining, project['total_scope_url'], project['burned_scope_url'], project['velocity_url'])
+								averageVelocity, dataPointsTotal, dataPointsBurned, dataPointsRemaining, project['total_scope_url'], project['burned_scope_url'], project['velocity_url'], milestonePoints)
 						}
 					}
 				}

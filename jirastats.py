@@ -162,7 +162,7 @@ def parse_config(config):
             title = config['title']
         else:
             title = None
-        if 'milestones' in keys:
+        if 'milestones' in keys and len(config['milestones']) > 0:
             milestones = config['milestones']
         else:
             milestones = None
