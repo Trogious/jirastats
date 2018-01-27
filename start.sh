@@ -5,6 +5,6 @@ BASEDIR=$(dirname "$0")
 env \
 JS_USERNAME='' \
 JS_PASSWORD='' \
-JS_BASE_URL='' \
+JS_BASE_URL='https://jira.yggdrasilgaming.com' \
 JS_OUTPUT_JSON_FILE=$BASEDIR/data.json \
 python3 $BASEDIR/jirastats.py $@
