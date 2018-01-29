@@ -69,6 +69,11 @@ const ProjectRenderer = function(data) {
     var burnedScope = this.data.burned_scope_estimate;
     var velocity = this.data.average_velocity;
     var unit = this.data.estimate_type.replace('_', ' ');
+    var urls = [
+      this.data.total_scope_url,
+      this.data.burned_scope_url,
+      this.data.velocity_url
+    ];
 
     var chart = new Chart(ctx, {
       type: 'bar',
@@ -111,6 +116,14 @@ const ProjectRenderer = function(data) {
           }]
         }
       }
+    });
+    $container.click(function(evt) {
+        var activePoints = chart.getElementsAtEvent(evt);
+        if (activePoints.length) {
+          if (activePoints[0]._index < 3) {
+            window.location = urls[activePoints[0]._index];
+          }
+        }
     });
   }
 
@@ -165,6 +178,8 @@ const ProjectRenderer = function(data) {
         label: milestones[i].name,
         borderColor: milestones[i].color,
         backgroundColor: milestones[i].color,
+        pointRadius: 5,
+        pointHitRadius: 10,
         data: [{
           x: new Date(milestones[i].date),
           y: 1
