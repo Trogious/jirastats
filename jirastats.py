@@ -19,6 +19,8 @@ JS_MAX_RESULTS = 999
 JS_DATE_SEPARATOR = '-'
 JS_CONFIG_ISSUE_NAME = 'ReportsConfig'
 JS_CONFIG_FIELD = 'description'
+JS_EXTIMATE_SP = 'story_points'
+JS_ESTIMATE_MD = 'man_days'
 
 
 def log(log_item):
@@ -152,12 +154,12 @@ def get_average_velocity(project_name):
 def parse_config(config):
     keys = config.keys()
     if 'start_date' in keys and 'end_date' in keys:
-        if 'estimate_type' in keys and 'time' == config['estimate_type'].strip().lower():
+        if 'estimate_type' in keys and JS_ESTIMATE_MD == config['estimate_type'].strip().lower():
             get_estimate_fn = get_time_estimate
-            estimate_type = 'time'
+            estimate_type = JS_ESTIMATE_MD
         else:
             get_estimate_fn = get_story_points
-            estimate_type = 'story_points'
+            estimate_type = JS_EXTIMATE_SP
         if 'title' in keys:
             title = config['title']
         else:
@@ -166,7 +168,7 @@ def parse_config(config):
             milestones = config['milestones']
         else:
             milestones = None
-        if estimate_type == 'story_points':
+        if estimate_type == JS_EXTIMATE_SP:
             url_postfix = ' AND issueFunction IN aggregateExpression(Total, "storyPoints.sum()")'
         else:
             url_postfix = ' AND issueFunction IN aggregateExpression(Total, "originalEstimate.sum()")'
@@ -250,7 +252,7 @@ def get_project_stats(config_key):
         average_velocity = None
     else:
         average_velocity, rapid_view_id = get_average_velocity(project_name)
-        if config['estimate_type'] == 'time':
+        if config['estimate_type'] == JS_ESTIMATE_MD:
             average_velocity = int(average_velocity / 3600 / 8)
         if rapid_view_id is not None:
             velocity_url = get_jira_url_velocity(rapid_view_id)
