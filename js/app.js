@@ -27,6 +27,10 @@ const DataLoader = function() {
     if(index >= this.getChartCount()) throw "No chart data for index " + index;
     return this.rawData.projects[index];
   }
+
+  this.getGeneratedAt = function() {
+    return this.rawData ? this.rawData.generated_at : '';
+  }
 }
 
 // ProjectRenderer --------------------------------------------------------------------
@@ -60,7 +64,11 @@ const ProjectRenderer = function(data) {
   }
 
   this.renderTitle = function($container) {
-    $container.html("Project: " + this.data.title);
+    if (this.data.project_key === this.data.title) {
+      $container.html("Project: " + this.data.project_key);
+    } else {
+      $container.html(this.data.title);
+    }
   }
 
   this.renderScopeStats = function($container) {
@@ -164,15 +172,7 @@ const ProjectRenderer = function(data) {
   			scaleID: 'x-axis-0',
   			value: new Date(milestones[i].date),
   			borderColor: milestones[i].color,
-  			borderWidth: 2,
-        label: {
-          content: milestones[i].name,
-          enabled: false,
-          position: 'bottom',
-          yAdjust: pos,
-          backgroundColor: milestones[i].color,
-          fontColor: 'rgba(0,0,0,1)'
-        }
+  			borderWidth: 2
       });
       milestoneDataSets.push({
         label: milestones[i].name,
@@ -234,7 +234,33 @@ const ProjectRenderer = function(data) {
           callbacks: {
             title: function(tooltipItem, data) {
               return new Date(tooltipItem[0].xLabel).toISOString().slice(0,10);
+            },
+            label: function(tooltipItem, data) {
+              var label = data.datasets[tooltipItem.datasetIndex].label || '';
+
+              if (tooltipItem.datasetIndex < 2) {
+                if (label) {
+                  label += ': ';
+                }
+                label += tooltipItem.yLabel;
+              }
+
+              return label;
             }
+          }
+        },
+        legend: {
+          onClick: function(e, legendItem) {
+            var index = legendItem.datasetIndex;
+            var ci = this.chart;
+            var meta = ci.getDatasetMeta(index);
+
+            meta.hidden = meta.hidden === null? !ci.data.datasets[index].hidden : null;
+            if (index > 1) {
+              ci.config.options.annotation.annotations[index-2].scaleID = meta.hidden ? null : 'x-axis-0';
+            }
+
+            ci.update();
           }
         }
       }
@@ -251,7 +277,6 @@ const ProjectRenderer = function(data) {
             return mousePos.x >= leftX && mousePos.x <=rightX && mousePos.y >= bottomY && mousePos.y <= topY;
           });
           for (var i in activePoints) {
-            console.log(activePoints[i]);
             var dsIdx = activePoints[i]._datasetIndex;
             if (dsIdx === 0) {
               window.location = totalUrls[activePoints[i]._index];
@@ -271,7 +296,11 @@ loader.onLoad(function() {
   for(var i = 0; i < chartCount; ++i) {
     var renderer = new ProjectRenderer(loader.getChartData(i));
     renderer.render($('#dashboard'));
-    //console.log("Chart #" + i + " Data", loader.getChartData(i));
   }
+  $('#footer').append(
+    '<div class="container text-center">' +
+      '<p class="text-muted credit small" style="margin-top:30px">' + loader.getGeneratedAt() + '</p>' +
+    '</div>'
+  );
 })
 loader.load('./data.json');

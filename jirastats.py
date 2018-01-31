@@ -291,6 +291,7 @@ def main():
         stats = get_project_stats(config_key)
         stats_obj['projects'].append(stats)
     stats_obj['projects'].sort(key=lambda p: p['to_date']['dates'][0])
+    stats_obj['generated_at'] = datetime.datetime.now().isoformat(sep=' ')[:19]
     stats_json = json.dumps(stats_obj)
     try:
         with open(JS_OUTPUT_JSON_FILE, 'w') as f:
