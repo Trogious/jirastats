@@ -1,14 +1,32 @@
-
 // DataLoader ----------------------------------------------------------------------------
-const DataLoader = function() {
+const DataLoader = function(project_ids) {
 
   this.onLoadListeners = [];
   this.rawData = null;
+  this.projectIds = project_ids;
+
+  this.filterByIds = function() {
+    if (this.rawData && this.projectIds.length > 0) {
+      for (var p = 0; p < this.rawData.projects.length; ++p) {
+        var found = false;
+        for (var i in this.projectIds) {
+          if (this.rawData.projects[p].project_key === this.projectIds[i]) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          this.rawData.projects.splice(p--, 1);
+        }
+      }
+    }
+  }
 
   this.load = function(url, onComplete) {
     var self = this;
     $.getJSON(url, function(data) {
       self.rawData = data;
+      self.filterByIds();
       for(var i in self.onLoadListeners) {
         self.onLoadListeners[i]();
       }
@@ -129,7 +147,7 @@ const ProjectRenderer = function(data) {
         var activePoints = chart.getElementsAtEvent(evt);
         if (activePoints.length) {
           if (activePoints[0]._index < 3) {
-            window.location = urls[activePoints[0]._index];
+            window.open(urls[activePoints[0]._index]);
           }
         }
     });
@@ -279,9 +297,9 @@ const ProjectRenderer = function(data) {
           for (var i in activePoints) {
             var dsIdx = activePoints[i]._datasetIndex;
             if (dsIdx === 0) {
-              window.location = totalUrls[activePoints[i]._index];
+              window.open(totalUrls[activePoints[i]._index]);
             } else if (dsIdx === 1) {
-              window.location = burnedUrls[activePoints[i]._index];
+              window.open(burnedUrls[activePoints[i]._index]);
             }
           }
         }
@@ -289,8 +307,18 @@ const ProjectRenderer = function(data) {
   }
 }
 
+function getProjectIds() {
+    var regex = new RegExp('[?&]project_ids(=([^&#]*)|&|#|$)');
+    var project_ids = []
+    var results = regex.exec(window.location.href);
+    if (results && results[2]) {
+      project_ids = decodeURIComponent(results[2].replace(/\+/g, ' ')).split(',');
+    }
+    return project_ids;
+}
+
 // Entrypoint ------------------------------------------------------------------
-var loader = new DataLoader();
+var loader = new DataLoader(getProjectIds());
 loader.onLoad(function() {
   var chartCount = loader.getChartCount();
   for(var i = 0; i < chartCount; ++i) {
