@@ -251,11 +251,13 @@ def get_project_stats(config_key):
     if project_name is None:
         average_velocity = None
     else:
-        average_velocity, rapid_view_id = get_average_velocity(project_name)
-        if config['estimate_type'] == JS_ESTIMATE_MD:
-            average_velocity = int(average_velocity / 3600 / 8)
-        if rapid_view_id is not None:
-            velocity_url = get_jira_url_velocity(rapid_view_id)
+        average_velocity = get_average_velocity(project_name)
+        if average_velocity != None:
+            average_velocity, rapid_view_id = average_velocity
+            if config['estimate_type'] == JS_ESTIMATE_MD:
+                average_velocity = int(average_velocity / 3600 / 8)
+            if rapid_view_id is not None:
+                velocity_url = get_jira_url_velocity(rapid_view_id)
     if config['title'] is None:
         title = project_key
     else:
