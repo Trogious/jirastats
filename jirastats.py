@@ -23,6 +23,7 @@ JS_CONFIG_ISSUE_NAME = 'ReportsConfig'
 JS_CONFIG_FIELD = 'description'
 JS_EXTIMATE_SP = 'story_points'
 JS_ESTIMATE_MD = 'man_days'
+JS_DATE_FORMAT_HISTORY = '%Y-%m-%dT%H:%M:%S'
 JS_lock = Lock()
 
 
@@ -36,13 +37,13 @@ def jira_post(url, data):
     return requests.post(url, headers=JS_HEADERS, auth=JS_AUTH, data=data)
 
 
-def jira_get(url):
-    return requests.get(url, headers=JS_HEADERS, auth=JS_AUTH)
+def jira_get(url, params=None):
+    return requests.get(url, headers=JS_HEADERS, auth=JS_AUTH, params=params)
 
 
-def jira_search(jql, max_results=50, fields=[JS_STORYPOINTS_FIELD, JS_TIMEESTIMATE_FIELD]):
-    search_params = {'jql': jql, 'maxResults': max_results, 'fields': fields}
-    resp = jira_post(JS_BASE_URL + '/rest/api/2/search', json.dumps(search_params))
+def jira_search(jql, max_results=50, fields=[JS_STORYPOINTS_FIELD, JS_TIMEESTIMATE_FIELD], expand=''):
+    search_params = {'jql': jql, 'maxResults': max_results, 'fields': fields, 'expand': expand}
+    resp = jira_get(JS_BASE_URL + '/rest/api/2/search', search_params)
     return resp
 
 
@@ -105,7 +106,7 @@ class StatsFetcher(Thread):
     def get_story_points(self, jql):
         resp = jira_search(jql, JS_MAX_RESULTS)
         if resp.status_code == 200:
-            return self.calculate_story_points(json.loads(resp.text))
+            return self.calculate_story_points(resp.json())
         else:
             log(resp.status_code)
         return None
@@ -124,7 +125,7 @@ class StatsFetcher(Thread):
     def get_time_estimate(self, jql):
         resp = jira_search(jql, JS_MAX_RESULTS)
         if resp.status_code == 200:
-            return self.calculate_time_estimate(json.loads(resp.text))
+            return self.calculate_time_estimate(resp.json())
         else:
             log(resp.status_code)
         return None
@@ -132,17 +133,16 @@ class StatsFetcher(Thread):
     def get_rapidview_id(self, resp, project_name):
         if 'views' in resp.keys():
             for view in resp['views']:
-                if project_name.strip().lower() == view['name'].strip().lower():
+                if view['name'].strip().lower() == project_name.strip().lower().replace('closed/', ''):
                     return view['id']
         return None
 
-    def get_closed_sprint_ids(self, resp):
-        ids = []
+    def get_sprint_data(self, resp):
+        data = []
         if 'sprints' in resp.keys():
             for sprint in resp['sprints']:
-                if sprint['state'].strip().lower() == 'closed':
-                    ids.append(sprint['id'])
-        return ids
+                data.append((sprint['id'], sprint['name'], sprint['state'].strip().lower() == 'closed'))
+        return data
 
     def get_sprint_completed_sp(self, resp):
         completed_sp = None
@@ -156,27 +156,67 @@ class StatsFetcher(Thread):
                         completed_sp = int(completed_est['value'])
         return completed_sp
 
-    def get_average_velocity(self, project_name):
+    def is_bug(self, issue):
+        return issue['typeName'].lower() in ['bug', 'sub-bug']
+
+    def get_issue_counts(self, contents, name):
+        bugs_no = 0.0
+        non_bugs_no = 0.0
+        if name in contents.keys():
+            for issue in contents[name]:
+                if self.is_bug(issue):
+                    bugs_no += 1.0
+                else:
+                    non_bugs_no += 1.0
+        return (bugs_no, non_bugs_no)
+
+    def get_sprint_ratios(self, resp):
+        ratios = None
+        if 'contents' in resp.keys():
+            contents = resp['contents']
+            bugs_no, non_bugs_no = self.get_issue_counts(contents, 'completedIssues')
+            counts = self.get_issue_counts(contents, 'issuesNotCompletedInCurrentSprint')
+            bugs_no += counts[0]
+            non_bugs_no += counts[1]
+            total_no = bugs_no + non_bugs_no
+            if total_no < 1:
+                ratio = 0.0
+            else:
+                ratio = float((bugs_no*100)/total_no)
+            ratios = (non_bugs_no, bugs_no, ratio)
+        return ratios
+
+    def get_sprint_metrics(self, project_name):
         resp = jira_get(JS_BASE_URL + '/rest/greenhopper/1.0/rapidviews/list')
         if resp.status_code == 200:
-            rapid_view_id = self.get_rapidview_id(json.loads(resp.text), project_name)
+            rapid_view_id = self.get_rapidview_id(resp.json(), project_name)
             if rapid_view_id is not None:
                 resp = jira_get(JS_BASE_URL + '/rest/greenhopper/1.0/sprintquery/' + str(rapid_view_id) + '?includeHistoricsprints=true&includeFuturesprints=true')
                 if resp.status_code == 200:
-                    sprint_ids = self.get_closed_sprint_ids(json.loads(resp.text))
+                    sprint_data = self.get_sprint_data(resp.json())
                     story_points = []
-                    for sprint_id in sprint_ids:
+                    ratios = []
+                    for s_data in sprint_data:
+                        sprint_id, sprint_name, sprint_closed = s_data
                         resp = jira_get(JS_BASE_URL + '/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=' + str(rapid_view_id) + '&sprintId=' + str(sprint_id))
                         if resp.status_code == 200:
-                            sp = self.get_sprint_completed_sp(json.loads(resp.text))
-                            if sp is not None:
-                                story_points.append(sp)
+                            if sprint_closed:
+                                resp_json = resp.json()
+                                sp = self.get_sprint_completed_sp(resp_json)
+                                if sp is not None:
+                                    story_points.append(sp)
+                            ratio = self.get_sprint_ratios(resp_json)
+                            if ratio is not None:
+                                ratios.append({'sprint_id': sprint_id, 'sprint_name': sprint_name, 'features2bugs': ratio})
                         else:
                             log(resp.status_code)
                     average_velocity = int(sum(story_points) / max(1, len(story_points)))
-                    return (average_velocity, rapid_view_id)
+                    ratios.sort(key=lambda r: r['sprint_id'])
+                    return (average_velocity, rapid_view_id, ratios)
                 else:
                     log(resp.status_code)
+            else:
+                log('cannot find rapidview')
         else:
             log(resp.status_code)
         return None
@@ -223,6 +263,34 @@ class StatsFetcher(Thread):
             log(resp.status_code)
         return None
 
+    def get_time_in_status(self, status, issue):
+        dt = datetime.timedelta()
+        length = len(issue['changelog']['histories'])
+        for i in range(length):
+            hs = issue['changelog']['histories'][i]
+            for item in hs['items']:
+                if item['field'] == 'status' and item['fromString'].upper() == status.upper() and i > 0:
+                    start = datetime.datetime.strptime(hs['created'][:19], JS_DATE_FORMAT_HISTORY)
+                    he = issue['changelog']['histories'][i-1]
+                    end = datetime.datetime.strptime(he['created'][:19], JS_DATE_FORMAT_HISTORY)
+                    dt += (start - end)
+                    break
+        return dt.days * 24 * 3600 + dt.seconds
+
+    def get_times_in(self):
+        jql = 'project=' + self.project_key + ' AND status in (Done)'
+        time_spent = {'READY FOR CODING': 0, 'CODING': 0, 'READY FOR TESTING': 0, 'TESTING': 0, 'TESTING BLOCKED': 0}
+        resp = jira_search(jql, JS_MAX_RESULTS, ['fixVersions'], 'changelog')
+        if resp.status_code == 200:
+            issues = resp.json()
+            if 'issues' in issues.keys():
+                for issue in issues['issues']:
+                    for status in time_spent.keys():
+                        time_spent[status] += self.get_time_in_status(status, issue)
+        else:
+            log(resp.status_code)
+        return time_spent
+
     def get_project_stats(self):
         config = self.get_project_config(self.config_key)
         get_estimate_fn = config['get_estimate_fn']
@@ -252,25 +320,29 @@ class StatsFetcher(Thread):
         remaining_estimates_to_date = [total_estimates_to_date[i] - resolved_estimates_to_date[i] for i in range(len(total_estimates_to_date))]
         project_name = self.get_project_name_from_key(self.project_key)
         velocity_url = None
-        if project_name is None:
-            average_velocity = None
-        else:
-            average_velocity = self.get_average_velocity(project_name)
-            if average_velocity is not None:
-                average_velocity, rapid_view_id = average_velocity
+        average_velocity = None
+        sprint_ratios = None
+        if project_name is not None:
+            sprint_metrics = self.get_sprint_metrics(project_name)
+            if sprint_metrics is not None:
+                average_velocity, rapid_view_id, sprint_ratios = sprint_metrics
                 if config['estimate_type'] == JS_ESTIMATE_MD:
                     average_velocity = int(average_velocity / 3600 / 8)
                 if rapid_view_id is not None:
                     velocity_url = get_jira_url_velocity(rapid_view_id)
+            else:
+                sprint_ratios = None
         if config['title'] is None:
             title = self.project_key
         else:
             title = config['title']
         to_date = {'total_estimates': total_estimates_to_date, 'burned_estimates': resolved_estimates_to_date,
                    'remaining_estimates': remaining_estimates_to_date, 'dates': days, 'urls': urls_to_date}
+        times_in = self.get_times_in()
         stats = {'project_key': self.project_key, 'estimate_type': config['estimate_type'], 'total_scope_estimate': total_est, 'burned_scope_estimate': resolved_est,
                  'total_scope_url': total_est_url, 'burned_scope_url': remaining_est_url, 'average_velocity': average_velocity, 'velocity_url': velocity_url,
-                 'remaining_scope_estimate': remaining_est, 'title': title, 'to_date': to_date, 'milestones': config['milestones']}
+                 'sprint_ratios': sprint_ratios, 'times_in': times_in, 'remaining_scope_estimate': remaining_est, 'title': title, 'to_date': to_date,
+                 'milestones': config['milestones']}
         return stats
 
     def get_archived(self):
