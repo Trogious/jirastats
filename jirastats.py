@@ -24,6 +24,7 @@ JS_CONFIG_FIELD = 'description'
 JS_EXTIMATE_SP = 'story_points'
 JS_ESTIMATE_MD = 'man_days'
 JS_DATE_FORMAT_HISTORY = '%Y-%m-%dT%H:%M:%S'
+JS_DATE_FORMAT_SPRINT = '%d/%b/%y %H:%M %p'
 JS_lock = Lock()
 
 
@@ -182,9 +183,16 @@ class StatsFetcher(Thread):
             if total_no < 1:
                 ratio = 0.0
             else:
-                ratio = float((bugs_no*100)/total_no)
+                ratio = float((bugs_no*100.0)/total_no)
             ratios = (non_bugs_no, bugs_no, ratio)
         return ratios
+
+    def get_sprint_start(self, resp):
+        start = None
+        if 'sprint' in resp.keys():
+            start_date = resp['sprint']['startDate']
+            start = int(datetime.datetime.strptime(start_date, JS_DATE_FORMAT_SPRINT).timestamp())
+        return start
 
     def get_sprint_metrics(self, project_name):
         resp = jira_get(JS_BASE_URL + '/rest/greenhopper/1.0/rapidviews/list')
@@ -200,18 +208,19 @@ class StatsFetcher(Thread):
                         sprint_id, sprint_name, sprint_closed = s_data
                         resp = jira_get(JS_BASE_URL + '/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=' + str(rapid_view_id) + '&sprintId=' + str(sprint_id))
                         if resp.status_code == 200:
+                            resp_json = resp.json()
                             if sprint_closed:
-                                resp_json = resp.json()
                                 sp = self.get_sprint_completed_sp(resp_json)
                                 if sp is not None:
                                     story_points.append(sp)
+                            sprint_start = self.get_sprint_start(resp_json)
                             ratio = self.get_sprint_ratios(resp_json)
                             if ratio is not None:
-                                ratios.append({'sprint_id': sprint_id, 'sprint_name': sprint_name, 'features2bugs': ratio})
+                                ratios.append({'sprint_id': sprint_id, 'sprint_name': sprint_name, 'sprint_start': sprint_start, 'features2bugs': ratio})
                         else:
                             log(resp.status_code)
                     average_velocity = int(sum(story_points) / max(1, len(story_points)))
-                    ratios.sort(key=lambda r: r['sprint_id'])
+                    ratios.sort(key=lambda r: r['sprint_start'])
                     return (average_velocity, rapid_view_id, ratios)
                 else:
                     log(resp.status_code)
@@ -275,7 +284,7 @@ class StatsFetcher(Thread):
                     end = datetime.datetime.strptime(he['created'][:19], JS_DATE_FORMAT_HISTORY)
                     dt += (start - end)
                     break
-        return dt.days * 24 * 3600 + dt.seconds
+        return int(dt.total_seconds())
 
     def get_times_in(self):
         jql = 'project=' + self.project_key + ' AND status in (Done)'
@@ -289,7 +298,8 @@ class StatsFetcher(Thread):
                         time_spent[status] += self.get_time_in_status(status, issue)
         else:
             log(resp.status_code)
-        return time_spent
+        time_spent_array = [{'name': k, 'value': time_spent[k]} for k in time_spent.keys()]
+        return time_spent_array
 
     def get_project_stats(self):
         config = self.get_project_config(self.config_key)
@@ -410,6 +420,8 @@ def main():
     stats_obj = {'projects': []}
     fetchers = []
     for config_key in keys:
+        if not config_key.startswith('HAZ-'):
+            pass
         fetcher = StatsFetcher(config_key, archive)
         fetchers.append(fetcher)
         fetcher.start()
