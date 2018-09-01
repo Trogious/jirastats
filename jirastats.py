@@ -214,14 +214,15 @@ class StatsFetcher(Thread):
                                 sp = self.get_sprint_completed_sp(resp_json)
                                 if sp is not None:
                                     story_points.append(sp)
-                            sprint_start = self.get_sprint_start(resp_json)
-                            ratio = self.get_sprint_ratios(resp_json)
+                            # sprint_start = self.get_sprint_start(resp_json)
+                            # ratio = self.get_sprint_ratios(resp_json)
+                            ratio = None
                             if ratio is not None:
-                                ratios.append({'sprint_id': sprint_id, 'sprint_name': sprint_name, 'sprint_start': sprint_start, 'features2bugs': ratio})
+                                pass  # ratios.append({'sprint_id': sprint_id, 'sprint_name': sprint_name, 'sprint_start': sprint_start, 'features2bugs': ratio})
                         else:
                             log(resp.status_code)
                     average_velocity = int(sum(story_points) / max(1, len(story_points)))
-                    ratios.sort(key=lambda r: r['sprint_start'])
+                    # ratios.sort(key=lambda r: r['sprint_start'])
                     return (average_velocity, rapid_view_id, ratios)
                 else:
                     log(resp.status_code)
@@ -321,6 +322,13 @@ class StatsFetcher(Thread):
             datasets = [{'name': 'Development', 'condition': '', 'days': days, 'milestones': config['milestones']}]
         to_dates = []
         for ds in datasets:
+            jql = 'project=' + self.project_key + ds['condition']
+            total_est = get_estimate_fn(jql)
+            total_est_url = get_jira_url_issues(jql, config['url_postfix'])
+            jql = 'project=' + self.project_key + ds['condition'] + ' AND resolution != Unresolved'
+            resolved_est = get_estimate_fn(jql)
+            remaining_est = total_est - resolved_est
+            remaining_est_url = get_jira_url_issues(jql, config['url_postfix'])
             urls_to_date = {'total': [], 'burned': []}
             total_estimates_to_date = []
             resolved_estimates_to_date = []
@@ -335,9 +343,10 @@ class StatsFetcher(Thread):
                 urls_to_date['burned'].append(get_jira_url_issues(jql, config['url_postfix']))
                 resolved_estimates_to_date.append(resolved_est_to_date)
             remaining_estimates_to_date = [total_estimates_to_date[i] - resolved_estimates_to_date[i] for i in range(len(total_estimates_to_date))]
-            to_date = {'total_estimates': total_estimates_to_date, 'burned_estimates': resolved_estimates_to_date,
-                       'remaining_estimates': remaining_estimates_to_date, 'dates': ds['days'], 'urls': urls_to_date,
-                       'name': ds['name'], 'milestones': ds['milestones']}
+            to_date = {'total_scope_estimate': total_est, 'burned_scope_estimate': resolved_est, 'total_scope_url': total_est_url,
+                       'burned_scope_url': remaining_est_url, 'total_estimates': total_estimates_to_date, 'burned_estimates': resolved_estimates_to_date,
+                       'remaining_scope_estimate': remaining_est, 'remaining_estimates': remaining_estimates_to_date, 'dates': ds['days'],
+                       'urls': urls_to_date, 'name': ds['name'], 'milestones': ds['milestones']}
             to_dates.append(to_date)
         return to_dates
 
@@ -345,21 +354,12 @@ class StatsFetcher(Thread):
         config = self.get_project_config(self.config_key)
         if config is None:
             return None
-        get_estimate_fn = config['get_estimate_fn']
-        jql = 'project=' + self.project_key
-        total_est = get_estimate_fn(jql)
-        total_est_url = get_jira_url_issues(jql, config['url_postfix'])
-        jql = 'project=' + self.project_key + ' AND resolution != Unresolved'
-        resolved_est = get_estimate_fn(jql)
-        remaining_est = total_est - resolved_est
-        remaining_est_url = get_jira_url_issues(jql, config['url_postfix'])
         project_name = self.get_project_name_from_key(self.project_key)
         velocity_url = None
         average_velocity = None
         sprint_ratios = None
         if project_name is not None:
-            # sprint_metrics = self.get_sprint_metrics(project_name)
-            sprint_metrics = None
+            sprint_metrics = self.get_sprint_metrics(project_name)
             if sprint_metrics is not None:
                 average_velocity, rapid_view_id, sprint_ratios = sprint_metrics
                 if config['estimate_type'] == JS_ESTIMATE_MD:
@@ -373,9 +373,8 @@ class StatsFetcher(Thread):
         datasets = self.get_stats_to_date(config)
         # times_in = self.get_times_in()
         times_in = None
-        stats = {'project_key': self.project_key, 'estimate_type': config['estimate_type'], 'total_scope_estimate': total_est, 'burned_scope_estimate': resolved_est,
-                 'total_scope_url': total_est_url, 'burned_scope_url': remaining_est_url, 'average_velocity': average_velocity, 'velocity_url': velocity_url,
-                 'sprint_ratios': sprint_ratios, 'times_in': times_in, 'remaining_scope_estimate': remaining_est, 'title': title, 'datasets': datasets,
+        stats = {'project_key': self.project_key, 'estimate_type': config['estimate_type'], 'average_velocity': average_velocity, 'velocity_url': velocity_url,
+                 'sprint_ratios': sprint_ratios, 'times_in': times_in, 'title': title, 'datasets': datasets,
                  'milestones': config['milestones']}
         # import itertools
         # self.transitions.sort(key=lambda x: x[1])
@@ -459,8 +458,6 @@ def main():
     stats_obj = {'projects': []}
     fetchers = []
     for config_key in keys:
-        if not config_key.startswith('DF-'):
-            continue
         fetcher = StatsFetcher(config_key, archive)
         fetchers.append(fetcher)
         fetcher.start()
