@@ -254,7 +254,7 @@ class StatsFetcher(Thread):
             else:
                 url_postfix = ' AND issueFunction IN aggregateExpression(Total, "originalEstimate.sum()")'
             datasets = None
-            if 'datasets' in config and len(config['datasets']) > 1:
+            if 'datasets' in config and config['datasets'] is not None and len(config['datasets']) > 1:
                 datasets = config['datasets']
             return {'start_date': config['start_date'], 'end_date': config['end_date'], 'get_estimate_fn': get_estimate_fn,
                     'estimate_type': estimate_type, 'title': title, 'url_postfix': url_postfix, 'milestones': milestones,
@@ -309,10 +309,10 @@ class StatsFetcher(Thread):
         time_spent_array = [{'name': k, 'value': time_spent[k]} for k in time_spent.keys()]
         return time_spent_array
 
-    def get_stats_to_date(self, config):
+    def get_stats_datasets(self, config):
         get_estimate_fn = config['get_estimate_fn']
         datasets = []
-        if 'datasets' in config and len(config['datasets']) > 1:
+        if 'datasets' in config and config['datasets'] is not None and len(config['datasets']) > 1:
             for ds in config['datasets']:
                 condition = ' AND issuetype IN (' + ds['issue_types'] + ')'
                 days = get_days_for_estimates(ds['start_date'], ds['end_date'])
@@ -370,7 +370,7 @@ class StatsFetcher(Thread):
             title = self.project_key
         else:
             title = config['title']
-        datasets = self.get_stats_to_date(config)
+        datasets = self.get_stats_datasets(config)
         # times_in = self.get_times_in()
         times_in = None
         stats = {'project_key': self.project_key, 'estimate_type': config['estimate_type'], 'average_velocity': average_velocity, 'velocity_url': velocity_url,
@@ -453,11 +453,18 @@ def get_archive(issue_key):
 
 
 def main():
+    create_archive = len(sys.argv) > 2 and sys.argv[1] == '--archive-only'
     keys = get_config_keys_for_reporting()
-    archive = get_archive(JS_ARCHIVE_ISSUE_KEY)
+    if create_archive:
+        archive = {}
+        project_ids = sys.argv[2].split(',')
+    else:
+        archive = get_archive(JS_ARCHIVE_ISSUE_KEY)
     stats_obj = {'projects': []}
     fetchers = []
     for config_key in keys:
+        if create_archive and get_project_key_from_config_key(config_key) not in project_ids:
+            continue
         fetcher = StatsFetcher(config_key, archive)
         fetchers.append(fetcher)
         fetcher.start()
@@ -469,8 +476,12 @@ def main():
     stats_obj['generated_at'] = datetime.datetime.now().isoformat(sep=' ')[:19]
     stats_json = json.dumps(stats_obj)
     try:
-        with open(JS_OUTPUT_JSON_FILE, 'w') as f:
-            f.write(stats_json)
+        if create_archive:
+            with open('./archive.json', 'w') as f:
+                f.write(stats_json)
+        else:
+            with open(JS_OUTPUT_JSON_FILE, 'w') as f:
+                f.write(stats_json)
     except OSError as e:
         log(e)
         sys.exit(e.errno)

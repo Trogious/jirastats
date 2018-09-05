@@ -1,9 +1,9 @@
 // DataLoader ----------------------------------------------------------------------------
-const DataLoader = function(project_ids) {
-
+const DataLoader = function(project_ids, dataset_ids) {
   this.onLoadListeners = [];
   this.rawData = null;
   this.projectIds = project_ids;
+  this.datasetIds = dataset_ids;
 
   this.filterByIds = function() {
     if (this.rawData && this.projectIds.length > 0) {
@@ -22,11 +22,27 @@ const DataLoader = function(project_ids) {
     }
   }
 
+  this.datasetsIncluded = function(d) {
+    return this.datasetIds.includes(''+d.id);
+  }.bind(this);
+
+  this.filterByDatasetIds = function() {
+    if (this.datasetIds.length > 0) {
+      for (var p = 0; p < this.rawData.projects.length; ++p) {
+        for (var d = 0; d < this.rawData.projects[p].datasets.length; ++d) {
+          this.rawData.projects[p].datasets[d].id = d;
+        }
+        this.rawData.projects[p].datasets = this.rawData.projects[p].datasets.filter(this.datasetsIncluded);
+      }
+    }
+  }
+
   this.load = function(url, onComplete) {
     var self = this;
     $.getJSON(url, function(data) {
       self.rawData = data;
       self.filterByIds();
+      self.filterByDatasetIds();
       for(var i in self.onLoadListeners) {
         self.onLoadListeners[i]();
       }
@@ -39,46 +55,66 @@ const DataLoader = function(project_ids) {
 
   this.getChartCount = function() {
     return this.rawData ? this.rawData.projects.length : 0;
-  }
+  };
+
+  this.getDatasetCount = function(index) {
+    if (this.rawData) {
+      return this.rawData.projects[index].datasets ? this.rawData.projects[index].datasets.length : 1;
+    }
+
+    return 0;
+  };
 
   this.getChartData = function(index) {
     if(index >= this.getChartCount()) throw "No chart data for index " + index;
     return this.rawData.projects[index];
-  }
+  };
 
   this.getGeneratedAt = function() {
     return this.rawData ? this.rawData.generated_at : '';
-  }
+  };
 }
 
 // ProjectRenderer --------------------------------------------------------------------
-const ProjectRenderer = function(data) {
+const ProjectRenderer = function(data, datasetCount) {
   this.data = data;
+  this.datasetCount = datasetCount;
 
   this.render = function($container) {
-    $template = $(
+    var template_str =
       '<hr/>' +
       '<div class="row">' +
         '<div class="col-12 title-container"></div>' +
-      '</div>' +
-      '<div class="row">' +
-        '<div class="col-md-4 col-sm-6 stats-container" style="height: 300px"></div>' +
-        '<div class="col-md-8 col-sm-6 burnup-container" style="height: 300px"></div>' +
-      '</div>'
-    );
+      '</div>';
+    for (var i = 0; i < this.datasetCount; ++i) {
+      template_str +=
+        '<div class="row">' +
+          '<div class="col-md-4 col-sm-6 stats-container' + i + '" style="height: 300px"></div>' +
+          '<div class="col-md-8 col-sm-6 burnup-container' + i + '" style="height: 300px"></div>' +
+        '</div>';
+    }
+    $template = $(template_str);
     $title = $('<h1></h1>');
-    $burnUp = $('<canvas />');
-    $stats = $('<canvas />');
-
-
     this.renderTitle($title);
-    this.renderBurnUp($burnUp);
-    this.renderScopeStats($stats);
+
+    var statsList = [];
+    var burnUpList = [];
+    for (var i = 0; i < this.datasetCount; ++i) {
+      $stats = $('<canvas />');
+      $burnUp = $('<canvas />');
+      this.renderScopeStats($stats, i);
+      this.renderBurnUp($burnUp, i);
+      statsList.push($stats);
+      burnUpList.push($burnUp);
+    }
 
     $container.append($template);
     $template.find(".title-container").append($title);
-    $template.find(".stats-container").append($stats);
-    $template.find(".burnup-container").append($burnUp);
+
+    for (var i = 0; i < this.datasetCount; ++i) {
+      $template.find(".stats-container" + i).append(statsList[i]);
+      $template.find(".burnup-container" + i).append(burnUpList[i]);
+    }
   }
 
   this.renderTitle = function($container) {
@@ -89,15 +125,15 @@ const ProjectRenderer = function(data) {
     }
   }
 
-  this.renderScopeStats = function($container) {
+  this.renderScopeStats = function($container, id) {
     var ctx = $container.get(0).getContext('2d');
-    var totalScope = this.data.total_scope_estimate;
-    var burnedScope = this.data.burned_scope_estimate;
+    var totalScope = this.data.datasets[id].total_scope_estimate;
+    var burnedScope = this.data.datasets[id].burned_scope_estimate;
     var velocity = this.data.average_velocity;
     var unit = this.data.estimate_type.replace('_', ' ');
     var urls = [
-      this.data.total_scope_url,
-      this.data.burned_scope_url,
+      this.data.datasets[id].total_scope_url,
+      this.data.datasets[id].burned_scope_url,
       this.data.velocity_url
     ];
 
@@ -153,15 +189,16 @@ const ProjectRenderer = function(data) {
     });
   }
 
-  this.renderBurnUp = function($container) {
+  this.renderBurnUp = function($container, id) {
     var ctx = $container.get(0).getContext('2d');
-    var dates = this.data.to_date.dates;
-    var totalScope = this.data.to_date.total_estimates;
-    var burnedScope = this.data.to_date.burned_estimates;
+    var dates = this.data.datasets[id].dates;
+    var totalScope = this.data.datasets[id].total_estimates;
+    var burnedScope = this.data.datasets[id].burned_estimates;
     var unit = this.data.estimate_type.replace('_', ' ');
-    var milestones = this.data.milestones;
-    var totalUrls = this.data.to_date.urls.total;
-    var burnedUrls = this.data.to_date.urls.burned;
+    var milestones = this.data.datasets[id].milestones;
+    var totalUrls = this.data.datasets[id].urls.total;
+    var burnedUrls = this.data.datasets[id].urls.burned;
+    var scopeName = this.data.datasets[id].name;
 
     // remove future data
     var now = new Date();
@@ -238,6 +275,10 @@ const ProjectRenderer = function(data) {
           xAxes: [{
             id: 'x-axis-0',
             type: 'linear',
+            scaleLabel: {
+              display: true,
+              labelString: scopeName
+            },
             ticks: {
               callback: function(value, index, values) {
                 return new Date(value).toISOString().slice(0,10);
@@ -309,7 +350,7 @@ const ProjectRenderer = function(data) {
 
 function getProjectIds() {
     var regex = new RegExp('[?&]project_ids(=([^&#]*)|&|#|$)');
-    var project_ids = []
+    var project_ids = [];
     var results = regex.exec(window.location.href);
     if (results && results[2]) {
       project_ids = decodeURIComponent(results[2].replace(/\+/g, ' ')).split(',');
@@ -317,12 +358,21 @@ function getProjectIds() {
     return project_ids;
 }
 
+function getShowOnlyDatasets() {
+    var regex = new RegExp('[?&]dataset_ids(=([^&#]*)|&|#|$)');
+    var dataset_ids = [];
+    var results = regex.exec(window.location.href);
+    if (results && results[2]) {
+      dataset_ids = decodeURIComponent(results[2].replace(/\+/g, ' ')).split(',');
+    }
+    return dataset_ids;
+}
 // Entrypoint ------------------------------------------------------------------
-var loader = new DataLoader(getProjectIds());
+var loader = new DataLoader(getProjectIds(), getShowOnlyDatasets());
 loader.onLoad(function() {
   var chartCount = loader.getChartCount();
   for(var i = 0; i < chartCount; ++i) {
-    var renderer = new ProjectRenderer(loader.getChartData(i));
+    var renderer = new ProjectRenderer(loader.getChartData(i), loader.getDatasetCount(i));
     renderer.render($('#dashboard'));
   }
   $('#footer').append(
