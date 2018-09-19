@@ -25,6 +25,7 @@ JS_EXTIMATE_SP = 'story_points'
 JS_ESTIMATE_MD = 'man_days'
 JS_DATE_FORMAT_HISTORY = '%Y-%m-%dT%H:%M:%S'
 JS_DATE_FORMAT_SPRINT = '%d/%b/%y %H:%M %p'
+JS_MINIMUM_DATASETS = 1
 JS_lock = Lock()
 
 
@@ -254,7 +255,7 @@ class StatsFetcher(Thread):
             else:
                 url_postfix = ' AND issueFunction IN aggregateExpression(Total, "originalEstimate.sum()")'
             datasets = None
-            if 'datasets' in config and config['datasets'] is not None and len(config['datasets']) > 1:
+            if 'datasets' in config and config['datasets'] is not None and len(config['datasets']) >= JS_MINIMUM_DATASETS:
                 datasets = config['datasets']
             return {'start_date': config['start_date'], 'end_date': config['end_date'], 'get_estimate_fn': get_estimate_fn,
                     'estimate_type': estimate_type, 'title': title, 'url_postfix': url_postfix, 'milestones': milestones,
@@ -312,7 +313,7 @@ class StatsFetcher(Thread):
     def get_stats_datasets(self, config):
         get_estimate_fn = config['get_estimate_fn']
         datasets = []
-        if 'datasets' in config and config['datasets'] is not None and len(config['datasets']) > 1:
+        if 'datasets' in config and config['datasets'] is not None and len(config['datasets']) >= JS_MINIMUM_DATASETS:
             for ds in config['datasets']:
                 condition = ' AND issuetype IN (' + ds['issue_types'] + ')'
                 days = get_days_for_estimates(ds['start_date'], ds['end_date'])
